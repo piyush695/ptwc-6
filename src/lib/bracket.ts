@@ -96,11 +96,11 @@ export function buildBracketDisplay(
   bracketSize: number = 32
 ): BracketRound[] {
   const phases: Array<{ phase: TournamentPhase; label: string; matchCount: number }> = [
-    { phase: TournamentPhase.ROUND_OF_32,   label: 'Round of 32',    matchCount: 16 },
-    { phase: TournamentPhase.ROUND_OF_16,   label: 'Round of 16',    matchCount: 8  },
-    { phase: TournamentPhase.QUARTERFINAL,  label: 'Quarterfinals',  matchCount: 4  },
-    { phase: TournamentPhase.SEMIFINAL,     label: 'Semifinals',     matchCount: 2  },
-    { phase: TournamentPhase.GRAND_FINAL,   label: 'Grand Final',    matchCount: 1  },
+    { phase: TournamentPhase.ROUND_OF_32, label: 'Round of 32', matchCount: 16 },
+    { phase: TournamentPhase.ROUND_OF_16, label: 'Round of 16', matchCount: 8 },
+    { phase: TournamentPhase.QUARTERFINAL, label: 'Quarterfinals', matchCount: 4 },
+    { phase: TournamentPhase.SEMIFINAL, label: 'Semifinals', matchCount: 2 },
+    { phase: TournamentPhase.GRAND_FINAL, label: 'Grand Final', matchCount: 1 },
   ]
 
   const traderMap = new Map(qualifiedTraders.map(t => [t.traderId, t]))
@@ -155,7 +155,7 @@ export function getNextMatchSlot(currentPhase: TournamentPhase, currentMatchNumb
   nextMatchNumber: number
   slotNumber: 1 | 2
 } | null {
-  const phaseOrder = [
+  const phaseOrder: TournamentPhase[] = [
     TournamentPhase.ROUND_OF_32,
     TournamentPhase.ROUND_OF_16,
     TournamentPhase.QUARTERFINAL,
@@ -163,10 +163,10 @@ export function getNextMatchSlot(currentPhase: TournamentPhase, currentMatchNumb
     TournamentPhase.GRAND_FINAL,
   ]
 
-  const currentIndex = phaseOrder.indexOf(currentPhase)
+  const currentIndex = phaseOrder.indexOf(currentPhase as TournamentPhase)
   if (currentIndex === -1 || currentIndex === phaseOrder.length - 1) return null
 
-  const nextPhase = phaseOrder[currentIndex + 1]
+  const nextPhase = phaseOrder[currentIndex + 1] as TournamentPhase
   const nextMatchNumber = Math.ceil(currentMatchNumber / 2)
   const slotNumber = currentMatchNumber % 2 === 1 ? 1 : 2
 
@@ -183,12 +183,12 @@ export function getPhaseDates(qualifierEnd: Date): Record<TournamentPhase, { sta
   return {
     [TournamentPhase.REGISTRATION]: { start: addDays(qualifierEnd, -60), end: qualifierEnd },
     [TournamentPhase.QUALIFIER]: { start: addDays(qualifierEnd, -12), end: qualifierEnd },
-    [TournamentPhase.ROUND_OF_32]:  { start: r32Start,           end: addDays(r32Start, 6)  },
-    [TournamentPhase.ROUND_OF_16]:  { start: addDays(r32Start, 7),  end: addDays(r32Start, 13) },
+    [TournamentPhase.ROUND_OF_32]: { start: r32Start, end: addDays(r32Start, 6) },
+    [TournamentPhase.ROUND_OF_16]: { start: addDays(r32Start, 7), end: addDays(r32Start, 13) },
     [TournamentPhase.QUARTERFINAL]: { start: addDays(r32Start, 14), end: addDays(r32Start, 20) },
-    [TournamentPhase.SEMIFINAL]:    { start: addDays(r32Start, 21), end: addDays(r32Start, 25) },
-    [TournamentPhase.GRAND_FINAL]:  { start: addDays(r32Start, 33), end: addDays(r32Start, 33) },
-    [TournamentPhase.COMPLETED]:    { start: addDays(r32Start, 33), end: addDays(r32Start, 33) },
+    [TournamentPhase.SEMIFINAL]: { start: addDays(r32Start, 21), end: addDays(r32Start, 25) },
+    [TournamentPhase.GRAND_FINAL]: { start: addDays(r32Start, 33), end: addDays(r32Start, 33) },
+    [TournamentPhase.COMPLETED]: { start: addDays(r32Start, 33), end: addDays(r32Start, 33) },
   }
 }
 

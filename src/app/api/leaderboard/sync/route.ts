@@ -22,16 +22,16 @@ import { db } from '@/lib/db'
 const SYNC_SECRET = process.env.SYNC_SECRET || 'dev-sync-secret-change-in-prod'
 
 interface AccountPayload {
-  accountNumber:   string
-  balance:         number
-  equity?:         number
-  openPnL?:        number
-  totalTrades:     number
-  winningTrades?:  number
-  maxDrawdown:     number
-  dailyDrawdown?:  number
-  openPositions?:  number
-  lastTradeAt?:    string
+  accountNumber: string
+  balance: number
+  equity?: number
+  openPnL?: number
+  totalTrades: number
+  winningTrades?: number
+  maxDrawdown: number
+  dailyDrawdown?: number
+  openPositions?: number
+  lastTradeAt?: string
 }
 
 async function processAccount(p: AccountPayload) {
@@ -44,23 +44,20 @@ async function processAccount(p: AccountPayload) {
     return { accountNumber: p.accountNumber, status: 'not_found' }
   }
 
-  const opening    = parseFloat(account.openingBalance.toString())
-  const balance    = p.balance
-  const returnPct  = opening > 0 ? ((balance - opening) / opening) * 100 : 0
+  const opening = parseFloat(account.openingBalance.toString())
+  const balance = p.balance
+  const returnPct = opening > 0 ? ((balance - opening) / opening) * 100 : 0
 
   // Update account
   await db.tradingAccount.update({
     where: { id: account.id },
     data: {
-      currentBalance:  balance,
-      equity:          p.equity ?? balance,
-      openPnL:         p.openPnL ?? 0,
-      totalTrades:     p.totalTrades,
-      winningTrades:   p.winningTrades ?? 0,
-      maxDrawdown:     p.maxDrawdown,
-      dailyDrawdown:   p.dailyDrawdown ?? 0,
-      openPositions:   p.openPositions ?? 0,
-      lastSyncAt:      new Date(),
+      currentBalance: balance,
+      currentEquity: p.equity ?? balance,
+      totalTrades: p.totalTrades,
+      winningTrades: p.winningTrades ?? 0,
+      maxDrawdown: p.maxDrawdown,
+      lastSyncAt: new Date(),
     },
   })
 
@@ -69,17 +66,17 @@ async function processAccount(p: AccountPayload) {
     await db.qualifierEntry.upsert({
       where: { traderId: account.traderId },
       create: {
-        traderId:     account.traderId,
-        accountId:    account.id,
+        traderId: account.traderId,
+        accountId: account.id,
         returnPct,
-        maxDrawdown:  p.maxDrawdown,
-        totalTrades:  p.totalTrades,
-        qualified:    false,
+        maxDrawdown: p.maxDrawdown,
+        totalTrades: p.totalTrades,
+        qualified: false,
       },
       update: {
         returnPct,
-        maxDrawdown:  p.maxDrawdown,
-        totalTrades:  p.totalTrades,
+        maxDrawdown: p.maxDrawdown,
+        totalTrades: p.totalTrades,
       },
     })
   }
@@ -109,8 +106,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: true,
         processed: summary.filter((s: any) => s.status === 'updated').length,
-        skipped:   summary.filter((s: any) => s.status === 'not_found').length,
-        errors:    summary.filter((s: any) => s.error).length,
+        skipped: summary.filter((s: any) => s.status === 'not_found').length,
+        errors: summary.filter((s: any) => s.error).length,
         results: summary,
         timestamp: new Date().toISOString(),
       })

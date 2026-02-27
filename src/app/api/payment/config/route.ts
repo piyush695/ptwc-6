@@ -5,17 +5,17 @@ import { db } from '@/lib/db'
 
 export const revalidate = 0
 
-export const DEFAULT_PAYMENT_CONFIG = {
-  feeEnabled:          false,
-  registrationFee:     10.00,
-  feeCurrency:         'USD',
-  provider:            'PAYPAL' as const,
-  paypalClientId:      '',
-  paypalMode:          'sandbox',
-  stripePublishableKey:'',
-  coinbaseApiKey:      '',       // public for Coinbase charge creation
-  nowpaymentsApiKey:   '',
-  manualInstructions:  '',
+const DEFAULT_PAYMENT_CONFIG = {
+  feeEnabled: false,
+  registrationFee: 10.00,
+  feeCurrency: 'USD',
+  provider: 'PAYPAL' as const,
+  paypalClientId: '',
+  paypalMode: 'sandbox',
+  stripePublishableKey: '',
+  coinbaseApiKey: '',       // public for Coinbase charge creation
+  nowpaymentsApiKey: '',
+  manualInstructions: '',
 }
 
 export async function GET() {
@@ -26,14 +26,14 @@ export async function GET() {
     // NEVER return secret keys to the client
     return NextResponse.json({
       config: {
-        feeEnabled:           cfg.feeEnabled,
-        registrationFee:      Number(cfg.registrationFee),
-        feeCurrency:          cfg.feeCurrency,
-        provider:             cfg.provider,
-        paypalClientId:       cfg.paypalClientId      || '',
-        paypalMode:           cfg.paypalMode,
+        feeEnabled: cfg.feeEnabled,
+        registrationFee: Number(cfg.registrationFee),
+        feeCurrency: cfg.feeCurrency,
+        provider: cfg.provider,
+        paypalClientId: cfg.paypalClientId || '',
+        paypalMode: cfg.paypalMode,
         stripePublishableKey: cfg.stripePublishableKey || '',
-        manualInstructions:   cfg.manualInstructions   || '',
+        manualInstructions: cfg.manualInstructions || '',
       }
     })
   } catch {

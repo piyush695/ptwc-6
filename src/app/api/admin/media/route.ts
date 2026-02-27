@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
   }
 
   const asset = await db.mediaAsset.create({
-    data: { filename: file.name, url, mimeType: file.type, size: file.size, uploadedBy: user.id },
+    data: { filename: file.name, url, mimeType: file.type, size: file.size, uploadedBy: (user.userId as string) || 'admin' },
   })
 
   return NextResponse.json({ asset })

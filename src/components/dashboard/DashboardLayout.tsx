@@ -5,15 +5,15 @@ import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 
 const NAV = [
-  { href: '/dashboard',              label: 'Overview',       icon: '◈' },
-  { href: '/dashboard/account',      label: 'Trading Account',icon: '◉' },
-  { href: '/dashboard/platform',     label: 'Trading Platform', icon: '⚡' },
-  { href: '/dashboard/trades',       label: 'Trade History',  icon: '◇' },
-  { href: '/dashboard/bracket',      label: 'My Bracket',     icon: '◈' },
-  { href: '/dashboard/leaderboard',  label: 'Leaderboard',    icon: '◎' },
-  { href: '/dashboard/kyc',          label: 'KYC / Verify',   icon: '◉' },
-  { href: '/dashboard/notifications',label: 'Notifications',  icon: '◇', badge: 3 },
-  { href: '/dashboard/settings',     label: 'Settings',       icon: '◎' },
+  { href: '/dashboard', label: 'Overview', icon: '◈' },
+  { href: '/dashboard/account', label: 'Trading Account', icon: '◉' },
+  { href: '/dashboard/platform', label: 'Trading Platform', icon: '⚡' },
+  { href: '/dashboard/trades', label: 'Trade History', icon: '◇' },
+  { href: '/dashboard/bracket', label: 'My Bracket', icon: '◈' },
+  { href: '/dashboard/leaderboard', label: 'Leaderboard', icon: '◎' },
+  { href: '/dashboard/kyc', label: 'KYC / Verify', icon: '◉' },
+  { href: '/dashboard/notifications', label: 'Notifications', icon: '◇', badge: 3 },
+  { href: '/dashboard/settings', label: 'Settings', icon: '◎' },
 ]
 
 // flagcdn real image
@@ -24,15 +24,7 @@ export default function DashboardLayout({
   trader,
 }: {
   children: React.ReactNode
-  trader: {
-    displayName: string
-    country: string
-    countryCode: string
-    status: string
-    kycStatus: string
-    rank: number | null
-    returnPct: number
-  }
+  trader: any
 }) {
   const path = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -79,30 +71,32 @@ export default function DashboardLayout({
             {/* Avatar with flag */}
             <div style={{ position: 'relative', flexShrink: 0 }}>
               <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--surface2)', border: '2px solid var(--neon)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>
-                {trader.displayName.charAt(0).toUpperCase()}
+                {trader?.displayName?.charAt(0).toUpperCase() || '?'}
               </div>
               <div style={{ position: 'absolute', bottom: -2, right: -2, width: 18, height: 13, borderRadius: 2, overflow: 'hidden', border: '1px solid rgba(0,0,0,0.3)' }}>
-                <img src={flagUrl(trader.countryCode)} alt={trader.country} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                {trader?.countryCode && <img src={flagUrl(trader.countryCode)} alt={trader.country || 'Flag'} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
               </div>
             </div>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 14, color: 'var(--white)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {trader.displayName}
+                {trader?.displayName || 'Loading...'}
               </div>
-              <div style={{ fontSize: 11, color: 'var(--gray3)', marginTop: 1 }}>{trader.country}</div>
+              <div style={{ fontSize: 11, color: 'var(--gray3)', marginTop: 1 }}>{trader?.country || '—'}</div>
             </div>
           </div>
           {/* Status + rank row */}
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <span style={{
-              fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 9,
-              letterSpacing: '0.12em', textTransform: 'uppercase',
-              padding: '3px 8px', borderRadius: 4,
-              color: statusColor[trader.status] || 'var(--gray2)',
-              background: `${(statusColor[trader.status] || '#888')}15`,
-              border: `1px solid ${(statusColor[trader.status] || '#888')}30`,
-            }}>{statusLabel[trader.status] || trader.status}</span>
-            {trader.rank && (
+            {trader?.status && (
+              <span style={{
+                fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 9,
+                letterSpacing: '0.12em', textTransform: 'uppercase',
+                padding: '3px 8px', borderRadius: 4,
+                color: statusColor[trader.status] || 'var(--gray2)',
+                background: `${(statusColor[trader.status] || '#888')}15`,
+                border: `1px solid ${(statusColor[trader.status] || '#888')}30`,
+              }}>{statusLabel[trader.status] || trader.status}</span>
+            )}
+            {trader?.rank && (
               <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 10, color: 'var(--gold)', marginLeft: 'auto' }}>
                 #{trader.rank} RANKED
               </span>
@@ -123,8 +117,8 @@ export default function DashboardLayout({
                 color: active ? 'var(--neon)' : 'var(--gray2)',
                 transition: 'all 0.15s',
               }}
-              onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)' }}
-              onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)' }}
+                onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
               >
                 <span style={{ fontSize: 14, opacity: active ? 1 : 0.5, flexShrink: 0 }}>{item.icon}</span>
                 <span style={{ fontFamily: 'var(--font-display)', fontWeight: active ? 800 : 600, fontSize: 13, letterSpacing: '0.04em', flex: 1 }}>
@@ -186,9 +180,11 @@ export default function DashboardLayout({
               </span>
             </div>
             {/* Return quick-stat */}
-            <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 14, color: trader.returnPct >= 0 ? 'var(--green)' : 'var(--red)' }}>
-              {trader.returnPct >= 0 ? '+' : ''}{trader.returnPct.toFixed(2)}%
-            </div>
+            {trader?.returnPct !== undefined && (
+              <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 14, color: trader.returnPct >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                {trader.returnPct >= 0 ? '+' : ''}{trader.returnPct.toFixed(2)}%
+              </div>
+            )}
           </div>
         </header>
 

@@ -22,17 +22,10 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       trades: {
         orderBy: { openTime: 'desc' },
         take: 20,
-        select: {
-          id: true, symbol: true, direction: true,
-          openTime: true, closeTime: true,
-          openPrice: true, closePrice: true,
-          lots: true, profit: true, isOpen: true, isFlaggedCheat: true,
-        }
       },
       snapshots: {
-        orderBy: { createdAt: 'desc' },
+        orderBy: { timestamp: 'desc' },
         take: 30,
-        select: { balance: true, equity: true, createdAt: true },
       },
     }
   })
@@ -42,35 +35,35 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   return NextResponse.json({
     ...account,
-    openingBalance:  parseFloat(account.openingBalance.toString()),
-    currentBalance:  parseFloat(account.currentBalance.toString()),
-    currentEquity:   parseFloat(account.currentEquity.toString()),
-    peakBalance:     parseFloat(account.peakBalance.toString()),
-    maxDrawdown:     parseFloat(account.maxDrawdown.toString()),
+    openingBalance: parseFloat(account.openingBalance.toString()),
+    currentBalance: parseFloat(account.currentBalance.toString()),
+    currentEquity: parseFloat(account.currentEquity.toString()),
+    peakBalance: parseFloat(account.peakBalance.toString()),
+    maxDrawdown: parseFloat(account.maxDrawdown.toString()),
     totalVolumeLots: parseFloat(account.totalVolumeLots.toString()),
     returnPct: account.openingBalance.toNumber() > 0
       ? ((account.currentBalance.toNumber() - account.openingBalance.toNumber()) / account.openingBalance.toNumber()) * 100
       : 0,
-    trades: account.trades.map(t => ({
+    trades: account.trades.map((t: any) => ({
       ...t,
-      openPrice:  parseFloat(t.openPrice.toString()),
+      openPrice: parseFloat(t.openPrice.toString()),
       closePrice: t.closePrice ? parseFloat(t.closePrice.toString()) : null,
-      lots:       parseFloat(t.lots.toString()),
-      profit:     t.profit ? parseFloat(t.profit.toString()) : null,
+      lots: parseFloat(t.lots.toString()),
+      profit: t.profit ? parseFloat(t.profit.toString()) : null,
     })),
-    snapshots: account.snapshots.map(s => ({
+    snapshots: account.snapshots.map((s: any) => ({
       balance: parseFloat(s.balance.toString()),
-      equity:  parseFloat(s.equity.toString()),
-      date:    s.createdAt,
+      equity: parseFloat(s.equity.toString()),
+      date: s.timestamp,
     })),
   })
 }
 
 const patchSchema = z.object({
-  status:          z.enum(['PENDING','ACTIVE','FROZEN','CLOSED']).optional(),
+  status: z.enum(['PENDING', 'ACTIVE', 'FROZEN', 'CLOSED']).optional(),
   brokerAccountId: z.string().optional(),
-  notes:           z.string().optional(),
-  manualBalance:   z.number().positive().optional(), // admin correction
+  notes: z.string().optional(),
+  manualBalance: z.number().positive().optional(), // admin correction
 })
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
@@ -86,33 +79,33 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       return NextResponse.json({ error: 'Account not found' }, { status: 404 })
 
     const updateData: any = {}
-    if (body.status)          updateData.status          = body.status
+    if (body.status) updateData.status = body.status
     if (body.brokerAccountId) updateData.brokerAccountId = body.brokerAccountId
     if (body.manualBalance) {
       updateData.currentBalance = body.manualBalance
-      updateData.currentEquity  = body.manualBalance
+      updateData.currentEquity = body.manualBalance
     }
 
     const updated = await db.tradingAccount.update({
       where: { id: params.id },
-      data:  updateData,
+      data: updateData,
     })
 
     await logAdminAction({
-      userId:     user.userId,
-      action:     'ACCOUNT_UPDATED',
+      userId: user.userId,
+      action: 'ACCOUNT_UPDATED',
       entityType: 'TradingAccount',
-      entityId:   params.id,
-      details:    JSON.stringify(body),
+      entityId: params.id,
+      details: JSON.stringify(body),
     })
 
     return NextResponse.json({
       ...updated,
-      openingBalance:  parseFloat(updated.openingBalance.toString()),
-      currentBalance:  parseFloat(updated.currentBalance.toString()),
-      currentEquity:   parseFloat(updated.currentEquity.toString()),
-      peakBalance:     parseFloat(updated.peakBalance.toString()),
-      maxDrawdown:     parseFloat(updated.maxDrawdown.toString()),
+      openingBalance: parseFloat(updated.openingBalance.toString()),
+      currentBalance: parseFloat(updated.currentBalance.toString()),
+      currentEquity: parseFloat(updated.currentEquity.toString()),
+      peakBalance: parseFloat(updated.peakBalance.toString()),
+      maxDrawdown: parseFloat(updated.maxDrawdown.toString()),
       totalVolumeLots: parseFloat(updated.totalVolumeLots.toString()),
     })
   } catch (e: any) {

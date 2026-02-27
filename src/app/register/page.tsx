@@ -25,8 +25,9 @@ const COUNTRIES = [
 
 const flagUrl = (code: string) => `https://flagcdn.com/w80/${code.toLowerCase()}.png`
 
-// Steps — payment is ALWAYS step 3, always required
-const STEPS = ['Country', 'Profile', 'Confirm', 'Payment']
+// Registration steps (payment step is shown only when the admin enables the registration fee)
+const STEPS_WITH_PAYMENT = ['Country', 'Profile', 'Confirm', 'Payment']
+const STEPS_FREE = ['Country', 'Profile', 'Confirm']
 
 // All payment providers — user picks one on the payment step
 // Real brand logos fetched from official CDNs
@@ -172,9 +173,13 @@ export default function RegisterPage() {
 
   const selected          = COUNTRIES.find(c => c.code === countryCode)
   const filteredCountries = COUNTRIES.filter(c => !countrySearch || c.name.toLowerCase().includes(countrySearch.toLowerCase()) || c.code.toLowerCase().includes(countrySearch.toLowerCase()))
+
+  const feeEnabled        = Boolean(payCfg?.feeEnabled)
   const fee               = payCfg?.registrationFee ?? 10
   const currency          = payCfg?.feeCurrency ?? 'USD'
-  const isPayStep         = step === 3
+  const steps             = feeEnabled ? STEPS_WITH_PAYMENT : STEPS_FREE
+  const payStepIndex      = feeEnabled ? 3 : -1
+  const isPayStep         = feeEnabled && step === payStepIndex
 
   // Load payment config + handle redirect-back from Stripe/Coinbase/NOW
   useEffect(() => {
@@ -263,6 +268,9 @@ export default function RegisterPage() {
       if (!agree1) return setError('Please agree to the Terms & Conditions')
       if (!agree2) return setError('Please confirm you are 18+')
       sessionStorage.setItem('reg_form', JSON.stringify({ form, countryCode, agree1, agree2, provider: selectedProvider }))
+
+      // If registration is free, skip the payment step entirely
+      if (!feeEnabled) { submit(); return }
     }
     setStep(s => s + 1)
   }
@@ -281,15 +289,17 @@ export default function RegisterPage() {
   }
 
   const submit = async () => {
-    // Hard block — no payment, no account
-    if (!paymentDone && selectedProvider !== 'MANUAL') {
-      setError('Payment must be completed before you can register.')
-      return
+    // Only require payment when the admin has enabled the registration fee
+    if (feeEnabled) {
+      if (!paymentDone && selectedProvider !== 'MANUAL') {
+        setError('Payment must be completed before you can register.')
+        return
+      }
     }
     setLoading(true)
     try {
       const body: any = { ...form, countryCode }
-      if (paymentId) body.paymentId = paymentId
+      if (feeEnabled && paymentId) body.paymentId = paymentId
       const r = await fetch('/api/auth/register', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'Registration failed')
@@ -307,7 +317,7 @@ export default function RegisterPage() {
         <div style={{ maxWidth:480, width:'100%', textAlign:'center' }}>
           <div style={{ width:80, height:80, borderRadius:'50%', background:'rgba(0,230,118,0.1)', border:'2px solid rgba(0,230,118,0.4)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 32px', fontSize:36 }}>✓</div>
           <h1 style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:48, color:'var(--white)', marginBottom:12 }}>You're In!</h1>
-          <p style={{ color:'var(--gray2)', marginBottom:24, fontSize:16, lineHeight:1.6 }}>Welcome to Hola Prime World Cup. Registration & payment confirmed.</p>
+          <p style={{ color:'var(--gray2)', marginBottom:24, fontSize:16, lineHeight:1.6 }}>Welcome to Hola Prime World Cup. {feeEnabled ? 'Registration & payment confirmed.' : 'Registration confirmed.'}</p>
           {selected && (
             <div className="card" style={{ display:'inline-block', padding:'28px 48px', marginBottom:32 }}>
               <img src={flagUrl(selected.code)} alt={selected.name} style={{ width:80, borderRadius:6, display:'block', margin:'0 auto 16px' }} />
@@ -353,12 +363,24 @@ export default function RegisterPage() {
           <div key={t} style={{ color:'var(--gray1)', fontSize:14, marginBottom:9 }}>{t}</div>
         ))}
         {/* Fee badge */}
-        <div style={{ marginTop:32, display:'inline-flex', alignItems:'center', gap:12, background:'rgba(240,192,64,0.08)', border:'1px solid rgba(240,192,64,0.25)', borderRadius:10, padding:'14px 20px' }}>
-          <span style={{ fontSize:22 }}>💳</span>
-          <div>
-            <div style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:24, color:'var(--gold)', lineHeight:1 }}>{currency} {fee}</div>
-            <div style={{ fontSize:11, color:'var(--gray3)', marginTop:3 }}>One-time registration fee</div>
+        {feeEnabled ? (
+          <div style={{ marginTop:32, display:'inline-flex', alignItems:'center', gap:12, background:'rgba(240,192,64,0.08)', border:'1px solid rgba(240,192,64,0.25)', borderRadius:10, padding:'14px 20px' }}>
+            <span style={{ fontSize:22 }}>💳</span>
+            <div>
+              <div style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:24, color:'var(--gold)', lineHeight:1 }}>{currency} {fee}</div>
+              <div style={{ fontSize:11, color:'var(--gray3)', marginTop:3 }}>One-time registration fee</div>
+            </div>
           </div>
+        ) : (
+          <div style={{ marginTop:32, display:'inline-flex', alignItems:'center', gap:12, background:'rgba(0,230,118,0.08)', border:'1px solid rgba(0,230,118,0.25)', borderRadius:10, padding:'14px 20px' }}>
+            <span style={{ fontSize:22 }}>🎟️</span>
+            <div>
+              <div style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:24, color:'var(--green)', lineHeight:1 }}>FREE</div>
+              <div style={{ fontSize:11, color:'var(--gray3)', marginTop:3 }}>Registration fee is turned off</div>
+            </div>
+          </div>
+        )}
+      </div>
         </div>
       </div>
 
@@ -367,19 +389,19 @@ export default function RegisterPage() {
 
         {/* Step indicator */}
         <div style={{ display:'flex', alignItems:'center', marginBottom:36 }}>
-          {STEPS.map((s, i) => (
-            <div key={s} style={{ display:'flex', alignItems:'center', flex: i < STEPS.length - 1 ? 1 : undefined }}>
+          {steps.map((s, i) => (
+            <div key={s} style={{ display:'flex', alignItems:'center', flex: i < steps.length - 1 ? 1 : undefined }}>
               <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:5 }}>
                 <div style={{ width:30, height:30, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'var(--font-display)', fontWeight:900, fontSize:13, transition:'all 0.3s',
-                  background: (i < step || (i === 3 && paymentDone)) ? 'var(--green)' : i === step ? 'var(--neon)' : 'var(--surface2)',
+                  background: (i < step || (i === payStepIndex && paymentDone)) ? 'var(--green)' : i === step ? 'var(--neon)' : 'var(--surface2)',
                   color: (i <= step) ? 'var(--black)' : 'var(--gray3)',
                   boxShadow: i === step ? '0 0 14px rgba(0,212,255,0.5)' : 'none',
                 }}>
-                  {(i < step || (i === 3 && paymentDone)) ? '✓' : i + 1}
+                  {(i < step || (i === payStepIndex && paymentDone)) ? '✓' : i + 1}
                 </div>
-                <span style={{ fontFamily:'var(--font-display)', fontSize:9, fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', color: i === step ? (i === 3 ? 'var(--gold)' : 'var(--neon)') : 'var(--gray3)', whiteSpace:'nowrap' }}>{s}</span>
+                <span style={{ fontFamily:'var(--font-display)', fontSize:9, fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', color: i === step ? (i === payStepIndex ? 'var(--gold)' : 'var(--neon)') : 'var(--gray3)', whiteSpace:'nowrap' }}>{s}</span>
               </div>
-              {i < STEPS.length - 1 && <div style={{ flex:1, height:1, background: i < step ? 'var(--green)' : 'var(--border2)', margin:'0 8px', marginBottom:18, transition:'background 0.3s' }} />}
+              {i < steps.length - 1 && <div style={{ flex:1, height:1, background: i < step ? 'var(--green)' : 'var(--border2)', margin:'0 8px', marginBottom:18, transition:'background 0.3s' }} />}
             </div>
           ))}
         </div>
@@ -452,7 +474,7 @@ export default function RegisterPage() {
         {step === 2 && (
           <div className="animate-fade-up">
             <h1 style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:38, color:'var(--white)', marginBottom:6, textTransform:'uppercase' }}>Review & Agree</h1>
-            <p style={{ color:'var(--gray2)', marginBottom:20, fontSize:14 }}>Almost there — review your details then proceed to payment.</p>
+            <p style={{ color:'var(--gray2)', marginBottom:20, fontSize:14 }}>Almost there — review your details then {feeEnabled ? 'proceed to payment.' : 'complete registration.'}</p>
             <div className="card" style={{ marginBottom:18, padding:'18px 20px' }}>
               {selected && (
                 <div style={{ display:'flex', alignItems:'center', gap:14, paddingBottom:14, marginBottom:14, borderBottom:'1px solid var(--border)' }}>
@@ -467,10 +489,12 @@ export default function RegisterPage() {
                 </div>
               ))}
               {/* Fee line */}
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 0', marginTop:4 }}>
-                <span style={{ fontFamily:'var(--font-display)', fontSize:11, fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--gold)' }}>💳 Registration Fee</span>
-                <span style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:18, color:'var(--gold)' }}>{currency} {fee}</span>
-              </div>
+              {feeEnabled && (
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 0', marginTop:4 }}>
+                  <span style={{ fontFamily:'var(--font-display)', fontSize:11, fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--gold)' }}>💳 Registration Fee</span>
+                  <span style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:18, color:'var(--gold)' }}>{currency} {fee}</span>
+                </div>
+              )}
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:12, marginBottom:6 }}>
               <label style={{ display:'flex', alignItems:'flex-start', gap:10, cursor:'pointer' }}>
@@ -486,9 +510,9 @@ export default function RegisterPage() {
         )}
 
         {/* ══════════════════════════════════════════════════════════
-            STEP 3 — PAYMENT (always shown, always required)
+            STEP 3 — PAYMENT (only when fee is enabled)
         ══════════════════════════════════════════════════════════ */}
-        {step === 3 && (
+        {feeEnabled && step === 3 && (
           <div className="animate-fade-up">
 
             {/* ── Payment complete screen ──────────────────────── */}

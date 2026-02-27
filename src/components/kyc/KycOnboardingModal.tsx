@@ -19,20 +19,20 @@ interface KycOnboardingModalProps {
 }
 
 const STEPS = [
-  { icon: '🪪', title: 'Identity Document',   desc: 'Passport, national ID, or driving licence' },
-  { icon: '🤳', title: 'Selfie Check',         desc: 'Quick live selfie matched to your document' },
-  { icon: '🏠', title: 'Address Proof',        desc: 'Bank statement or utility bill (< 3 months)' },
-  { icon: '🔐', title: 'Compliance Review',    desc: 'Automated background check (1–24 hours)' },
+  { icon: '🪪', title: 'Identity Document', desc: 'Passport, national ID, or driving licence' },
+  { icon: '🤳', title: 'Selfie Check', desc: 'Quick live selfie matched to your document' },
+  { icon: '🏠', title: 'Address Proof', desc: 'Bank statement or utility bill (< 3 months)' },
+  { icon: '🔐', title: 'Compliance Review', desc: 'Automated background check (1–24 hours)' },
 ]
 
 type Screen = 'intro' | 'sdk' | 'submitted' | 'approved' | 'rejected' | 'error'
 
 export default function KycOnboardingModal({ traderId, displayName, onClose }: KycOnboardingModalProps) {
-  const [screen,     setScreen]     = useState<Screen>('intro')
-  const [sdkToken,   setSdkToken]   = useState<string | null>(null)
+  const [screen, setScreen] = useState<Screen>('intro')
+  const [sdkToken, setSdkToken] = useState<string | null>(null)
   const [tokenError, setTokenError] = useState<string | null>(null)
   const [skipConfirm, setSkipConfirm] = useState(false)
-  const [mounted,    setMounted]    = useState(false)
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
     setMounted(true)
@@ -281,8 +281,7 @@ export default function KycOnboardingModal({ traderId, displayName, onClose }: K
                   border: '1px solid rgba(0,212,255,0.2)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: 13,
-                  title: s.title,
-                }}>{s.icon}</div>
+                }} title={s.title}>{s.icon}</div>
               ))}
             </div>
           </div>
@@ -375,10 +374,10 @@ export default function KycOnboardingModal({ traderId, displayName, onClose }: K
             display: 'flex', flexDirection: 'column', gap: 12,
           }}>
             {[
-              { label: 'Documents uploaded', done: true,  color: 'var(--green, #00e676)' },
-              { label: 'Under review',        done: true,  color: 'var(--neon, #00d4ff)' },
-              { label: 'Decision pending',    done: false, color: 'rgba(240,192,64,0.8)' },
-              { label: 'Account activated',   done: false, color: 'rgba(180,200,235,0.4)' },
+              { label: 'Documents uploaded', done: true, color: 'var(--green, #00e676)' },
+              { label: 'Under review', done: true, color: 'var(--neon, #00d4ff)' },
+              { label: 'Decision pending', done: false, color: 'rgba(240,192,64,0.8)' },
+              { label: 'Account activated', done: false, color: 'rgba(180,200,235,0.4)' },
             ].map((s, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div style={{

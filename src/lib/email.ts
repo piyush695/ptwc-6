@@ -1,16 +1,183 @@
 // src/lib/email.ts
 import nodemailer from 'nodemailer'
 import { db } from './db'
+import { kvGet } from '@/lib/kv'
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: parseInt(process.env.SMTP_PORT || '587'),
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASSWORD,
-  },
-})
+
+type StoredEmailConfig = {
+  smtp?: {
+    host: string
+    port: string
+    secure?: boolean
+    user?: string
+    password?: string
+    fromName?: string
+    fromEmail?: string
+  }
+  mta?: {
+    provider?: string
+    credentials?: Record<string, string>
+  }
+}
+
+async function getEmailConfig() {
+  const stored = (await kvGet<StoredEmailConfig>('email_config')) || {}
+  const smtp = stored.smtp || {}
+
+  const host = smtp.host || process.env.SMTP_HOST || ''
+  const port = parseInt(smtp.port || process.env.SMTP_PORT || '587', 10)
+  const secure = !!(smtp.secure ?? false)
+  const user = smtp.user || process.env.SMTP_USER || ''
+  const pass = smtp.password || process.env.SMTP_PASSWORD || ''
+
+  const fromName = smtp.fromName || process.env.EMAIL_FROM_NAME || 'Hola Prime World Cup'
+  const fromEmail = smtp.fromEmail || process.env.EMAIL_FROM || 'noreply@worldcup.holaprime.com'
+
+  return {
+    smtp: { host, port, secure, user, pass, fromName, fromEmail },
+    mta: stored.mta || {},
+  }
+}
+
+async function createTransporter() {
+  const cfg = await getEmailConfig()
+  if (!cfg.smtp.host) throw new Error('SMTP host is not configured')
+
+  const transporter = nodemailer.createTransport({
+    host: cfg.smtp.host,
+    port: cfg.smtp.port,
+    secure: cfg.smtp.secure,
+    auth: cfg.smtp.user ? { user: cfg.smtp.user, pass: cfg.smtp.pass } : undefined,
+    connectionTimeout: 12_000,
+    greetingTimeout: 12_000,
+    socketTimeout: 12_000,
+  } as any)
+
+  return { transporter, cfg }
+}
+
+async function sendViaMta(params: {
+  provider: string
+  credentials: Record<string, string>
+  from: string
+  to: string
+  subject: string
+  html: string
+}) {
+  const provider = params.provider
+  const c = params.credentials || {}
+
+  // Minimal HTTP implementations for reliability on serverless (SMTP is often blocked).
+  if (provider === 'sendgrid') {
+    const apiKey = c.apiKey
+    if (!apiKey) throw new Error('SendGrid apiKey missing')
+    const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        personalizations: [{ to: [{ email: params.to }] }],
+        from: { email: params.from.replace(/^.*<|>.*$/g, '') || params.from },
+        subject: params.subject,
+        content: [{ type: 'text/html', value: params.html }],
+      }),
+    })
+    if (!res.ok) throw new Error(`SendGrid error: ${res.status} ${await res.text()}`)
+    return true
+  }
+
+  if (provider === 'mailgun') {
+    const apiKey = c.apiKey
+    const domain = c.domain
+    const region = (c.region || 'US').toUpperCase()
+    if (!apiKey || !domain) throw new Error('Mailgun apiKey/domain missing')
+    const host = region === 'EU' ? 'api.eu.mailgun.net' : 'api.mailgun.net'
+    const url = `https://${host}/v3/${domain}/messages`
+
+    const form = new URLSearchParams()
+    form.set('from', params.from)
+    form.set('to', params.to)
+    form.set('subject', params.subject)
+    form.set('html', params.html)
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${Buffer.from(`api:${apiKey}`).toString('base64')}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: form.toString(),
+    })
+    if (!res.ok) throw new Error(`Mailgun error: ${res.status} ${await res.text()}`)
+    return true
+  }
+
+  if (provider === 'postmark') {
+    const token = c.serverToken
+    if (!token) throw new Error('Postmark serverToken missing')
+    const res = await fetch('https://api.postmarkapp.com/email', {
+      method: 'POST',
+      headers: {
+        'X-Postmark-Server-Token': token,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        From: params.from,
+        To: params.to,
+        Subject: params.subject,
+        HtmlBody: params.html,
+        MessageStream: 'outbound',
+      }),
+    })
+    if (!res.ok) throw new Error(`Postmark error: ${res.status} ${await res.text()}`)
+    return true
+  }
+
+  if (provider === 'resend') {
+    const apiKey = c.apiKey
+    if (!apiKey) throw new Error('Resend apiKey missing')
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: params.from,
+        to: [params.to],
+        subject: params.subject,
+        html: params.html,
+      }),
+    })
+    if (!res.ok) throw new Error(`Resend error: ${res.status} ${await res.text()}`)
+    return true
+  }
+
+  if (provider === 'smtp2go') {
+    const apiKey = c.apiKey
+    if (!apiKey) throw new Error('SMTP2GO apiKey missing')
+    const res = await fetch('https://api.smtp2go.com/v3/email/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: apiKey,
+        to: [params.to],
+        sender: params.from,
+        subject: params.subject,
+        html_body: params.html,
+      }),
+    })
+    if (!res.ok) throw new Error(`SMTP2GO error: ${res.status} ${await res.text()}`)
+    const data: any = await res.json().catch(() => null)
+    if (data?.data && data.data.succeeded === 0) throw new Error(`SMTP2GO send failed: ${JSON.stringify(data)}`)
+    return true
+  }
+
+  // SES not implemented without AWS SDK; fall back to SMTP if configured.
+  throw new Error(`Unsupported MTA provider: ${provider}`)
+}
 
 interface SendEmailParams {
   to: string
@@ -18,13 +185,20 @@ interface SendEmailParams {
   html: string
   traderId?: string
   template?: string
+  fromName?: string
+  fromEmail?: string
 }
 
 export async function sendEmail(params: SendEmailParams): Promise<boolean> {
+  const cfgAll = await getEmailConfig()
+
+  const fromEmail = params.fromEmail || cfgAll.smtp.fromEmail
+  const fromName = params.fromName || cfgAll.smtp.fromName
+
   const log = await db.emailLog.create({
     data: {
       to: params.to,
-      from: process.env.EMAIL_FROM || 'noreply@worldcup.holaprime.com',
+      from: fromEmail,
       subject: params.subject,
       body: params.html,
       traderId: params.traderId,
@@ -34,12 +208,24 @@ export async function sendEmail(params: SendEmailParams): Promise<boolean> {
   })
 
   try {
-    await transporter.sendMail({
-      from: `"Hola Prime World Cup" <${process.env.EMAIL_FROM}>`,
-      to: params.to,
-      subject: params.subject,
-      html: params.html,
-    })
+    if (cfgAll.mta?.provider && cfgAll.mta?.credentials) {
+      await sendViaMta({
+        provider: cfgAll.mta.provider,
+        credentials: cfgAll.mta.credentials,
+        from: `"${fromName}" <${fromEmail}>`,
+        to: params.to,
+        subject: params.subject,
+        html: params.html,
+      })
+    } else {
+      const { transporter } = await createTransporter()
+      await transporter.sendMail({
+        from: `"${fromName}" <${fromEmail}>`,
+        to: params.to,
+        subject: params.subject,
+        html: params.html,
+      })
+    }
 
     await db.emailLog.update({
       where: { id: log.id },
@@ -54,7 +240,6 @@ export async function sendEmail(params: SendEmailParams): Promise<boolean> {
     return false
   }
 }
-
 // ─── EMAIL TEMPLATES ──────────────────────────────────────────────────────
 
 export function templateRegistrationConfirm(params: {
@@ -219,137 +404,18 @@ export function templateAdminInvite(params: {
       </p>
       <p style="color:rgba(180,200,235,0.7);margin:0 0 4px;font-size:13px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">Your Login Credentials</p>
       <div class="cred-box">
-        <div class="cred-row">
-          <span class="cred-label">Login URL</span>
-          <span class="cred-value">${params.loginUrl}</span>
-        </div>
-        <div class="cred-row">
-          <span class="cred-label">Email</span>
-          <span class="cred-value">${params.email}</span>
-        </div>
-        <div class="cred-row">
-          <span class="cred-label">Temporary Password</span>
-          <span class="cred-value">${params.password}</span>
-        </div>
-        <div class="cred-row">
-          <span class="cred-label">Role</span>
-          <span class="cred-value">${roleIcon} ${roleLabel}</span>
-        </div>
+        <div class="cred-row"><span class="cred-label">Email</span><span class="cred-value">${params.email}</span></div>
+        <div class="cred-row"><span class="cred-label">Password</span><span class="cred-value">${params.password}</span></div>
+        <div class="cred-row"><span class="cred-label">Role</span><span class="cred-value">${roleLabel}</span></div>
       </div>
+      <a class="btn" href="${params.loginUrl}">Login to Admin →</a>
       <div class="warn">
-        ⚠ <strong>Security:</strong> Please log in and change your password immediately. Do not share these credentials with anyone.
-      </div>
-      <div style="text-align:center;">
-        <a href="${params.loginUrl}" class="btn">Access Admin Panel →</a>
+        For security, please change this password immediately after first login.
       </div>
     </div>
     <div class="footer">
-      <p>Hola Prime World Cup 2026 — Admin System</p>
-      <p>This email was sent because an admin account was created for ${params.email}.<br>If you did not expect this, contact <a href="mailto:security@holaprime.com" style="color:#00d4ff;">security@holaprime.com</a></p>
+      Hola Prime World Cup • Admin Access
     </div>
-  </div>
-</body>
-</html>
-`
-}
-
-export function templateRoleChanged(params: {
-  firstName: string
-  email: string
-  oldRole: string
-  newRole: string
-  changedBy: string
-}) {
-  const newLabel = params.newRole === 'SUPER_ADMIN' ? 'Super Admin' : 'Admin'
-  const oldLabel = params.oldRole === 'SUPER_ADMIN' ? 'Super Admin' : 'Admin'
-  return `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><style>
-  body { font-family: Arial, sans-serif; background: #060A14; color: #fff; margin: 0; padding: 0; }
-  .container { max-width: 580px; margin: 0 auto; padding: 40px 20px; }
-  .card { background: #0F1829; border: 1px solid rgba(0,212,255,0.15); border-radius: 12px; padding: 28px; }
-  .header-bar { background: linear-gradient(135deg, #0D2B4E, #092040); border-radius: 8px; padding: 20px; text-align:center; margin-bottom:20px; }
-  .badge { display:inline-block; background:rgba(0,212,255,0.1); border:1px solid rgba(0,212,255,0.3); border-radius:6px; padding:4px 12px; font-size:11px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#00d4ff; }
-  .footer { text-align: center; color: rgba(100,120,160,0.6); font-size: 11px; margin-top: 24px; }
-</style></head>
-<body>
-  <div class="container">
-    <div class="card">
-      <div class="header-bar">
-        <div style="font-size:28px;margin-bottom:6px;">🔐</div>
-        <h2 style="margin:0;font-size:18px;">Your Admin Role Has Changed</h2>
-      </div>
-      <p style="color:rgba(180,200,235,0.8);line-height:1.6;">Hi <strong style="color:#fff;">${params.firstName}</strong>,</p>
-      <p style="color:rgba(180,200,235,0.8);line-height:1.6;">
-        Your admin panel role has been updated by <strong style="color:#00d4ff;">${params.changedBy}</strong>.
-      </p>
-      <div style="display:flex;align-items:center;gap:16px;margin:20px 0;padding:16px;background:rgba(0,0,0,0.3);border-radius:8px;">
-        <div style="text-align:center;">
-          <div style="font-size:11px;color:rgba(180,200,235,0.5);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.1em;">Previous</div>
-          <span class="badge" style="background:rgba(136,152,184,0.1);border-color:rgba(136,152,184,0.2);color:#8898b8;">${oldLabel}</span>
-        </div>
-        <div style="font-size:20px;color:rgba(0,212,255,0.4);">→</div>
-        <div style="text-align:center;">
-          <div style="font-size:11px;color:rgba(180,200,235,0.5);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.1em;">New Role</div>
-          <span class="badge">${newLabel}</span>
-        </div>
-      </div>
-      <p style="color:rgba(180,200,235,0.7);font-size:13px;line-height:1.6;">Your new permissions take effect immediately on your next page load. No re-login required.</p>
-    </div>
-    <div class="footer">Hola Prime World Cup 2026 · Admin System</div>
-  </div>
-</body>
-</html>
-`
-}
-
-// ─── PASSWORD RESET EMAIL ──────────────────────────────────────────────────
-
-export function templatePasswordReset(params: { firstName: string; resetUrl: string; expiresMinutes: number }) {
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body { margin:0; padding:0; background:#060a14; font-family:'Helvetica Neue',Arial,sans-serif; }
-    .container { max-width:560px; margin:0 auto; padding:40px 20px; }
-    .card { background:rgba(7,11,22,0.98); border:1px solid rgba(0,212,255,0.15); border-radius:16px; overflow:hidden; }
-    .top-bar { height:3px; background:linear-gradient(90deg,transparent,#00d4ff,#f0c040,#00d4ff,transparent); }
-    .body { padding:40px; }
-    .logo { text-align:center; margin-bottom:32px; }
-    .logo-icon { width:56px; height:56px; background:rgba(0,212,255,0.1); border:1px solid rgba(0,212,255,0.3); border-radius:14px; display:inline-flex; align-items:center; justify-content:center; font-size:26px; margin-bottom:10px; }
-    .logo-name { font-size:14px; font-weight:900; letter-spacing:0.1em; color:#fff; }
-    .logo-sub { font-size:10px; letter-spacing:0.25em; color:#00d4ff; margin-top:2px; }
-    h1 { margin:0 0 8px; font-size:26px; font-weight:900; color:#fff; text-align:center; letter-spacing:0.05em; text-transform:uppercase; }
-    .subtitle { text-align:center; font-size:14px; color:rgba(180,200,235,0.7); margin-bottom:28px; line-height:1.6; }
-    .btn { display:block; padding:16px 32px; background:#00d4ff; color:#060a14; text-decoration:none; border-radius:10px; font-size:14px; font-weight:900; letter-spacing:0.08em; text-transform:uppercase; text-align:center; margin:24px 0; box-shadow:0 0 24px rgba(0,212,255,0.35); }
-    .expiry { background:rgba(240,192,64,0.08); border:1px solid rgba(240,192,64,0.2); border-radius:8px; padding:12px 16px; text-align:center; font-size:13px; color:rgba(240,192,64,0.9); margin-bottom:20px; }
-    .url-box { background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:12px 14px; font-family:monospace; font-size:11px; color:rgba(180,200,235,0.5); word-break:break-all; margin-bottom:20px; }
-    .footer { text-align:center; padding:20px; font-size:11px; color:rgba(180,200,235,0.3); }
-    .warning { font-size:12px; color:rgba(180,200,235,0.5); line-height:1.6; text-align:center; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="card">
-      <div class="top-bar"></div>
-      <div class="body">
-        <div class="logo">
-          <div class="logo-icon">🔐</div>
-          <div class="logo-name">HOLA PRIME</div>
-          <div class="logo-sub">WORLD CUP 2026</div>
-        </div>
-        <h1>Reset Your Password</h1>
-        <p class="subtitle">Hi <strong style="color:#fff;">${params.firstName}</strong>, we received a request to reset your password. Click the button below to set a new one.</p>
-        <a href="${params.resetUrl}" class="btn">Reset My Password →</a>
-        <div class="expiry">⏱ This link expires in <strong>${params.expiresMinutes} minutes</strong></div>
-        <p class="warning">If you didn't request this, you can safely ignore this email. Your password will not change.</p>
-        <div class="url-box">If the button doesn't work, copy this link:<br>${params.resetUrl}</div>
-      </div>
-    </div>
-    <div class="footer">Hola Prime World Cup 2026 · For security issues contact support@holaprime.com</div>
   </div>
 </body>
 </html>

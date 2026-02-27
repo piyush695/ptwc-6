@@ -6,7 +6,7 @@ import { db } from '@/lib/db'
 export const revalidate = 0 // always fresh
 
 // ── Default config used when no DB record exists yet ─────────────────────
-export const DEFAULT_CONFIG = {
+const DEFAULT_CONFIG = {
   name:                  'Hola Prime World Cup 2026',
   currentPhase:          'REGISTRATION',
   registrationOpen:      true,

@@ -11,11 +11,11 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url)
-  const page   = Math.max(1, parseInt(searchParams.get('page')   || '1'))
-  const limit  = Math.min(100, parseInt(searchParams.get('limit') || '50'))
+  const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
+  const limit = Math.min(100, parseInt(searchParams.get('limit') || '50'))
   const reason = searchParams.get('reason') || ''
   const search = searchParams.get('search') || ''
-  const skip   = (page - 1) * limit
+  const skip = (page - 1) * limit
 
   const where: any = {}
   if (reason) where.reason = reason
@@ -23,8 +23,8 @@ export async function GET(req: NextRequest) {
     where.trader = {
       OR: [
         { displayName: { contains: search, mode: 'insensitive' } },
-        { firstName:   { contains: search, mode: 'insensitive' } },
-        { lastName:    { contains: search, mode: 'insensitive' } },
+        { firstName: { contains: search, mode: 'insensitive' } },
+        { lastName: { contains: search, mode: 'insensitive' } },
       ]
     }
   }
@@ -70,8 +70,8 @@ export async function GET(req: NextRequest) {
 
 const createSchema = z.object({
   traderId: z.string(),
-  reason:   z.enum(['DRAWDOWN_BREACH','RULE_VIOLATION','MANIPULATION','INACTIVITY','DOCUMENT_FRAUD','MULTIPLE_ACCOUNTS','EXTERNAL_SIGNAL','HFT_ABUSE','OTHER']),
-  notes:    z.string().optional(),
+  reason: z.enum(['MAX_DRAWDOWN_BREACH', 'DAILY_DRAWDOWN_BREACH', 'MIN_TRADES_NOT_MET', 'ARBITRAGE_DETECTED', 'DUPLICATE_ACCOUNT', 'COLLUSION', 'INACTIVITY', 'CODE_OF_CONDUCT', 'WITHDRAWAL']),
+  notes: z.string().optional(),
 })
 
 export async function POST(req: NextRequest) {
@@ -85,19 +85,19 @@ export async function POST(req: NextRequest) {
 
   const result = await db.$transaction(async (tx) => {
     const dq = await tx.disqualification.create({
-      data: { traderId, reason, notes, issuedBy: user.userId },
+      data: { traderId, reason, details: notes || '', phase: 'QUALIFIER', issuedBy: user.userId },
     })
     await tx.trader.update({
       where: { id: traderId },
-      data:  { status: 'DISQUALIFIED' },
+      data: { status: 'DISQUALIFIED' },
     })
     return dq
   })
 
   await db.adminLog.create({
     data: {
-      userId:  user.userId,
-      action:  'TRADER_DISQUALIFIED',
+      userId: user.userId,
+      action: 'TRADER_DISQUALIFIED',
       details: JSON.stringify({ traderId, reason, notes }),
     },
   })
@@ -120,8 +120,8 @@ export async function DELETE(req: NextRequest) {
 
   await db.adminLog.create({
     data: {
-      userId:  user.userId,
-      action:  'TRADER_REINSTATED',
+      userId: user.userId,
+      action: 'TRADER_REINSTATED',
       details: JSON.stringify({ traderId, dqId }),
     },
   })

@@ -15,7 +15,7 @@ const schema = z.object({
   dateOfBirth: z.string().optional(),
   phone: z.string().optional(),
   referralCode: z.string().optional(),
-  paymentId:    z.string().optional(),  // RegistrationPayment.id — required if fee enabled
+  paymentId: z.string().optional(),  // RegistrationPayment.id — required if fee enabled
 })
 
 export async function POST(req: NextRequest) {
@@ -36,22 +36,20 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Payment check ─────────────────────────────────────────────────────
-    if (config?.registrationFee) {
-      const payConfig = await db.paymentConfig.findFirst()
-      if (payConfig?.feeEnabled) {
-        if (!data.paymentId) {
-          return NextResponse.json({ error: 'Registration fee payment is required', paymentRequired: true }, { status: 402 })
-        }
-        const payment = await db.registrationPayment.findUnique({ where: { id: data.paymentId } })
-        if (!payment || payment.status !== 'COMPLETED') {
-          return NextResponse.json({ error: 'Payment not completed. Please complete payment before registering.', paymentRequired: true }, { status: 402 })
-        }
-        if (payment.email.toLowerCase() !== data.email.toLowerCase()) {
-          return NextResponse.json({ error: 'Payment email does not match registration email' }, { status: 400 })
-        }
-        if (payment.traderId) {
-          return NextResponse.json({ error: 'This payment has already been used' }, { status: 409 })
-        }
+    const payConfig = await db.paymentConfig.findFirst()
+    if (payConfig?.feeEnabled) {
+      if (!data.paymentId) {
+        return NextResponse.json({ error: 'Registration fee payment is required', paymentRequired: true }, { status: 402 })
+      }
+      const payment = await db.registrationPayment.findUnique({ where: { id: data.paymentId } })
+      if (!payment || payment.status !== 'COMPLETED') {
+        return NextResponse.json({ error: 'Payment not completed. Please complete payment before registering.', paymentRequired: true }, { status: 402 })
+      }
+      if (payment.email.toLowerCase() !== data.email.toLowerCase()) {
+        return NextResponse.json({ error: 'Payment email does not match registration email' }, { status: 400 })
+      }
+      if (payment.traderId) {
+        return NextResponse.json({ error: 'This payment has already been used' }, { status: 409 })
       }
     }
 
@@ -97,7 +95,7 @@ export async function POST(req: NextRequest) {
           leadStatus: 'REGISTERED',
           source: req.headers.get('referer')?.includes('instagram') ? 'social'
             : req.headers.get('referer')?.includes('google') ? 'paid'
-            : data.referralCode ? 'referral' : 'direct',
+              : data.referralCode ? 'referral' : 'direct',
         },
       })
 
@@ -105,11 +103,7 @@ export async function POST(req: NextRequest) {
       if (data.paymentId) {
         await tx.registrationPayment.update({
           where: { id: data.paymentId },
-          data:  { traderId: trader.id },
-        })
-        await tx.trader.update({
-          where: { id: trader.id },
-          data:  { registrationPaid: true, paymentId: data.paymentId },
+          data: { traderId: trader.id },
         })
       }
 
